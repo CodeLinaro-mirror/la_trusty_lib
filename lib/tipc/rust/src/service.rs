@@ -17,6 +17,7 @@
 use alloc::rc::{Rc, Weak};
 use core::fmt;
 use core::mem::{ManuallyDrop, MaybeUninit};
+use core::num::ParseIntError;
 use log::{debug, error, warn};
 use trusty_std::alloc::{AllocError, Vec};
 use trusty_std::ffi::{CString, FallibleCString};
@@ -232,6 +233,14 @@ impl<D: Dispatcher> Channel<D> {
 pub struct Uuid(trusty_sys::uuid);
 
 impl Uuid {
+    const UUID_BYTE_LEN: usize = std::mem::size_of::<trusty_sys::uuid>();
+    // UUID_STR_SIZE is a u32, conversion to usize is correct on our targeted architectures
+    // Subtracting 1 from UUID_STR_SIZE because we don't need the null terminator on the RUST
+    // implementation.
+    const UUID_STR_LEN: usize = (sys::UUID_STR_SIZE as usize) - 1;
+    const HYPHEN_SKIP_POS: [usize; 4] = [8, 4, 4, 4];
+    const CLOCK_SEQ_AND_NODE_NUM_BYTES: usize = 8;
+
     pub const fn new(
         time_low: u32,
         time_mid: u16,
@@ -241,8 +250,93 @@ impl Uuid {
         Uuid(trusty_sys::uuid { time_low, time_mid, time_hi_and_version, clock_seq_and_node })
     }
 
+    pub fn from_bytes(bytes: &[u8; Self::UUID_BYTE_LEN]) -> Self {
+        // SAFETY: `bytes` has the exact same size size as `trusty_sys::uuid`, so this transmute
+        //         copy is safe.
+        let uuid = unsafe { std::mem::transmute_copy(bytes) };
+        Uuid(uuid)
+    }
+
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self> {
+        let bytes: &[u8; Self::UUID_BYTE_LEN] = bytes.try_into().or(Err(TipcError::OutOfBounds))?;
+        Ok(Self::from_bytes(bytes))
+    }
+
     pub unsafe fn as_ptr(&self) -> *const trusty_sys::uuid {
         &self.0
+    }
+
+    pub fn new_from_string(uuid_str: &str) -> Result<Self> {
+        // Helper function that first tries to convert the `uuid_element` bytes into a string and
+        // then uses the provided `conversion_fn` to try to convert it into an integer, interpreting
+        // the string as a hex number
+        fn convert_uuid_element<T>(
+            uuid_element: Option<&str>,
+            conversion_fn: fn(&str, u32) -> core::result::Result<T, ParseIntError>,
+        ) -> Result<T> {
+            let uuid_element = uuid_element.ok_or(TipcError::InvalidData)?;
+            conversion_fn(uuid_element, 16).map_err(|_| TipcError::InvalidData)
+        }
+        // Splitting a string into chunks using only std Rust facilities is not stable yet, so
+        // providing a function for `Uuid` usage until it is stabilized.
+        fn split_convert_string_byte_chunks(
+            string_to_split: &str,
+            result_buffer: &mut [u8],
+        ) -> Result<()> {
+            // Because our input is in hexadecimal format, to get a byte we need a string of size 2.
+            let chunk_size = 2;
+            if (string_to_split.len() % chunk_size) != 0 {
+                return Err(TipcError::InvalidData);
+            }
+            let mut chunk;
+            let mut remainder = string_to_split;
+            for i in 0..(string_to_split.len() / chunk_size) {
+                (chunk, remainder) = remainder.split_at(chunk_size);
+                let converted_byte = convert_uuid_element(Some(chunk), u8::from_str_radix)?;
+                result_buffer[i] = converted_byte;
+            }
+            Ok(())
+        }
+        // checking first that provided string is ASCII, so we can later split clock_seq_and_node in
+        // byte chunks.
+        if !uuid_str.is_ascii() {
+            return Err(TipcError::InvalidData);
+        }
+        // Check that string has the correct length
+        if uuid_str.len() != Self::UUID_STR_LEN {
+            return Err(TipcError::InvalidData);
+        }
+        // Check that hyphens are in the correct positions.
+        let mut uuid_chr_itr = uuid_str.chars();
+        for skip_pos in Self::HYPHEN_SKIP_POS {
+            if uuid_chr_itr.nth(skip_pos) != Some('-') {
+                return Err(TipcError::InvalidData);
+            }
+        }
+        // Splitting by the hyphens and checking that we do not end up with more elements than
+        // expected. This checks that we didn't have some unexpected hyphens in the middle of the
+        // string. This, along with the previous 2 checks should also check that all the elements
+        // have the correct number of digits.
+        let uuid_elements = uuid_str.split(|c| c == '-');
+        if uuid_elements.count() != 5 {
+            return Err(TipcError::InvalidData);
+        }
+        // separating uuid at the '-' now that we know that the string is of the correct length and
+        // has the expected number of hyphens.
+        let mut uuid_elements = uuid_str.split(|c| c == '-');
+        let time_low = convert_uuid_element(uuid_elements.next(), u32::from_str_radix)?;
+        let time_mid = convert_uuid_element(uuid_elements.next(), u16::from_str_radix)?;
+        let time_hi_and_version = convert_uuid_element(uuid_elements.next(), u16::from_str_radix)?;
+        // The last 8 bytes are split in 2 elements. RFC 4122 states that it is stored in Big Endian
+        // format, so we are just going to concatenate the individual byte chunks of the 2 elements.
+        let mut clock_seq_and_node = [0u8; Self::CLOCK_SEQ_AND_NODE_NUM_BYTES];
+        let clock_seq = uuid_elements.next().ok_or(TipcError::InvalidData)?;
+        // clock_seq contains the first 2 bytes
+        split_convert_string_byte_chunks(clock_seq, &mut clock_seq_and_node[..2])?;
+        let node = uuid_elements.next().ok_or(TipcError::InvalidData)?;
+        // node contains the remaining 6 bytes
+        split_convert_string_byte_chunks(node, &mut clock_seq_and_node[2..])?;
+        Ok(Self::new(time_low, time_mid, time_hi_and_version, clock_seq_and_node))
     }
 }
 
@@ -260,6 +354,12 @@ impl fmt::Debug for Uuid {
             }
         }
         Ok(())
+    }
+}
+
+impl alloc::string::ToString for Uuid {
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
     }
 }
 
@@ -385,6 +485,116 @@ impl<T, U: Deserialize, V: Service<Connection = T, Message = U>> UnbufferedServi
     fn max_message_length(&self) -> usize {
         <Self as Service>::Message::MAX_SERIALIZED_SIZE
     }
+}
+
+/// Wrap a service in a newtype.
+///
+/// This macro wraps an existing service in a newtype
+/// that forwards the service trait implementation
+/// (either [`Service`] or [`UnbufferedService`]) to
+/// the wrapped service. This is useful when passing the
+/// same service multiple times to the [`service_dispatcher!`]
+/// macro, which requires that all the service types are distinct.
+/// The wrapper(s) can be used to serve multiple ports using
+/// the same service implementation.
+///
+/// [`service_dispatcher!`]: crate::service_dispatcher
+///
+/// # Examples
+///
+/// ```
+/// // Create a new Service2 type that wraps Service1
+/// wrap_service!(Service2(Service1: Service));
+/// service_dispatcher! {
+///     enum ServiceDispatcher {
+///         Service1,
+///         Service2,
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! wrap_service {
+    ($vis:vis $wrapper:ident ($inner:ty: Service)) => {
+        $crate::wrap_service!(@common $vis $wrapper $inner);
+        $crate::wrap_service!(@buffered $wrapper $inner);
+    };
+
+    ($vis:vis $wrapper:ident ($inner:ty: UnbufferedService)) => {
+        $crate::wrap_service!(@common $vis $wrapper $inner);
+        $crate::wrap_service!(@unbuffered $wrapper $inner);
+    };
+
+    (@common $vis:vis $wrapper:ident $inner:ty) => {
+        $vis struct $wrapper($inner);
+
+        #[allow(dead_code)] // These might not be used by anything
+        impl $wrapper {
+            $vis fn new(inner: $inner) -> Self { Self(inner) }
+            $vis fn inner(&self) -> &$inner { &self.0 }
+            $vis fn inner_mut(&mut self) -> &mut $inner { &mut self.0 }
+        }
+    };
+
+    (@buffered $wrapper:ident $inner:ty) => {
+        impl $crate::Service for $wrapper {
+            type Connection = <$inner as $crate::Service>::Connection;
+            type Message = <$inner as $crate::Service>::Message;
+
+            fn on_connect(
+                &self,
+                port: &$crate::PortCfg,
+                handle: &$crate::Handle,
+                peer: &$crate::Uuid,
+            ) -> $crate::Result<$crate::ConnectResult<Self::Connection>> {
+                <$inner as $crate::Service>::on_connect(&self.0, port, handle, peer)
+            }
+
+            fn on_message(
+                &self,
+                connection: &Self::Connection,
+                handle: &$crate::Handle,
+                msg: Self::Message,
+            ) -> $crate::Result<$crate::MessageResult> {
+                <$inner as $crate::Service>::on_message(&self.0, connection, handle, msg)
+            }
+
+            fn on_disconnect(&self, connection: &Self::Connection) {
+                <$inner as $crate::Service>::on_disconnect(&self.0, connection)
+            }
+        }
+    };
+
+    (@unbuffered $wrapper:ident $inner:ty) => {
+        impl $crate::UnbufferedService for $wrapper {
+            type Connection = <$inner as $crate::UnbufferedService>::Connection;
+
+            fn on_connect(
+                &self,
+                port: &$crate::PortCfg,
+                handle: &$crate::Handle,
+                peer: &$crate::Uuid,
+            ) -> $crate::Result<$crate::ConnectResult<Self::Connection>> {
+                <$inner as $crate::UnbufferedService>::on_connect(&self.0, port, handle, peer)
+            }
+
+            fn on_message(
+                &self,
+                connection: &Self::Connection,
+                handle: &$crate::Handle,
+                buffer: &mut [u8],
+            ) -> $crate::Result<$crate::MessageResult> {
+                <$inner as $crate::UnbufferedService>::on_message(&self.0, connection, handle, buffer)
+            }
+
+            fn on_disconnect(&self, connection: &Self::Connection) {
+                <$inner as $crate::UnbufferedService>::on_disconnect(&self.0, connection)
+            }
+
+            fn max_message_length(&self) -> usize {
+                <$inner as $crate::UnbufferedService>::max_message_length(&self.0)
+            }
+        }
+    };
 }
 
 pub trait Dispatcher {
@@ -580,32 +790,28 @@ macro_rules! service_dispatcher {
         /// different servers can be bound to different ports using the same event loop
         /// in the manager.
         struct $name<$($elt,)? const PORT_COUNT: usize> {
-            // ports and services should always be kept in sync, i.e. the
-            // service at index `i` services port `i`.
-            ports: alloc::vec::Vec<$crate::PortCfg>,
-            services: alloc::vec::Vec<ServiceKind$(<$elt>)?>,
+            ports: arrayvec::ArrayVec::<$crate::PortCfg, PORT_COUNT>,
+            services: arrayvec::ArrayVec::<ServiceKind$(<$elt>)?, PORT_COUNT>,
         }
 
         impl<$($elt,)? const PORT_COUNT: usize> $name<$($elt,)? PORT_COUNT> {
-            fn new() -> core::result::Result<Self, alloc::collections::TryReserveError> {
-                use trusty_std::alloc::FallibleVec;
+            fn new() -> $crate::Result<Self> {
                 Ok(Self {
-                    ports: alloc::vec::Vec::try_with_capacity(PORT_COUNT)?,
-                    services: alloc::vec::Vec::try_with_capacity(PORT_COUNT)?,
+                    ports: arrayvec::ArrayVec::<_, PORT_COUNT>::new(),
+                    services: arrayvec::ArrayVec::<_, PORT_COUNT>::new(),
                 })
             }
 
             fn add_service<T>(&mut self, service: alloc::rc::Rc<T>, port: $crate::PortCfg) -> $crate::Result<()>
             where ServiceKind$(<$elt>)? : From<alloc::rc::Rc<T>> {
-                if self.ports.len() >= PORT_COUNT || self.services.len() >= PORT_COUNT {
+                if self.ports.is_full() || self.services.is_full() {
                     return Err($crate::TipcError::OutOfBounds);
                 }
-                use trusty_std::alloc::FallibleVec;
-                // We unwrap here because we already checked capacity and we
-                // don't want to allow ports and services to get out of sync,
-                // e.g. the port was pushed but the service was not.
-                self.ports.try_push(port).unwrap();
-                self.services.try_push(service.into()).unwrap();
+                // SAFETY: We check the size above
+                unsafe {
+                    self.ports.push_unchecked(port);
+                    self.services.push_unchecked(service.into());
+                }
                 Ok(())
             }
         }
@@ -635,8 +841,9 @@ macro_rules! service_dispatcher {
                 handle: &$crate::Handle,
                 peer: &$crate::Uuid,
             ) -> $crate::Result<$crate::ConnectResult<Self::Connection>> {
-                let port_idx = self.ports.iter().position(|cfg| cfg == port)
-                                                .ok_or($crate::TipcError::InvalidPort)?;
+                let port_idx = self.ports.iter()
+                                         .position(|cfg| cfg == port)
+                                         .ok_or($crate::TipcError::InvalidPort)?;
 
                 match &self.services[port_idx] {
                     $(ServiceKind::$service(s) => {
@@ -674,7 +881,7 @@ macro_rules! service_dispatcher {
             }
 
             fn port_configurations(&self) -> &[$crate::PortCfg] {
-                &self.ports
+                self.ports.as_slice()
             }
 
             fn max_message_length(&self) -> usize {
@@ -788,6 +995,8 @@ impl<
     ///
     /// See [`service_dispatcher!`] for details on how to create a dispatcher
     /// for use with this API.
+    ///
+    /// [`service_dispatcher!`]: crate::service_dispatcher
     ///
     /// # Examples
     /// ```
@@ -1249,17 +1458,22 @@ mod test {
         }
     }
 
+    wrap_service!(WrappedService2(Service2: Service));
+    wrap_service!(WrappedService3(Service3: UnbufferedService));
+
     service_dispatcher! {
         enum TestServiceDispatcher {
             Service1,
             Service2,
             Service3,
+            WrappedService2,
+            WrappedService3,
         }
     }
 
     #[test]
     fn multiple_services() {
-        let mut dispatcher = TestServiceDispatcher::<3>::new().unwrap();
+        let mut dispatcher = TestServiceDispatcher::<5>::new().unwrap();
 
         let path1 = format!("{}.port.{}", SRV_PATH_BASE, "testService1");
         let cfg = PortCfg::new(&path1).unwrap();
@@ -1273,8 +1487,20 @@ mod test {
         let cfg = PortCfg::new(&path).unwrap();
         dispatcher.add_service(Rc::new(Service3), cfg).expect("Could not add service 3");
 
+        let path = format!("{}.port.{}", SRV_PATH_BASE, "testWrappedService2");
+        let cfg = PortCfg::new(&path).unwrap();
+        dispatcher
+            .add_service(Rc::new(WrappedService2(Service2)), cfg)
+            .expect("Could not add wrapped service 2");
+
+        let path = format!("{}.port.{}", SRV_PATH_BASE, "testWrappedService3");
+        let cfg = PortCfg::new(&path).unwrap();
+        dispatcher
+            .add_service(Rc::new(WrappedService3(Service3)), cfg)
+            .expect("Could not add wrapped service 3");
+
         let buffer = [0u8; 4096];
-        Manager::<_, _, 3, 4>::new_with_dispatcher(dispatcher, buffer)
+        Manager::<_, _, 5, 4>::new_with_dispatcher(dispatcher, buffer)
             .expect("Could not create service manager");
     }
 
@@ -1378,5 +1604,38 @@ mod multiservice_with_lifetimes_tests {
         let buffer = [0u8; 4096];
         Manager::<_, _, 2, 4>::new_with_dispatcher(dispatcher, buffer)
             .expect("Could not create service manager");
+    }
+}
+
+#[cfg(test)]
+mod uuid_tests {
+    use super::Uuid;
+    use test::{expect, expect_eq};
+
+    #[test]
+    fn uuid_parsing() {
+        let uuid = Uuid::new(0, 0, 0, [0; 8]);
+        let uuid_string = "00000000-0000-0000-0000-000000000000".to_string();
+        expect_eq!(uuid.to_string(), uuid_string);
+        let uuid_from_str = Uuid::new_from_string(&uuid_string);
+        expect!(uuid_from_str.is_ok(), "couldn't parse uuid string");
+        let uuid_from_str = uuid_from_str.unwrap();
+        expect_eq!(uuid, uuid_from_str, "uuid should match");
+        let uuid2 = Uuid::new(1262561249, 51804, 17255, [189, 181, 5, 22, 64, 5, 183, 196]);
+        let uuid_string_2 = "4b4127e1-ca5c-4367-bdb5-05164005b7c4".to_string();
+        let uuid2_from_str = Uuid::new_from_string(&uuid_string_2);
+        expect!(uuid2_from_str.is_ok(), "couldn't parse uuid string");
+        let uuid2_from_str = uuid2_from_str.unwrap();
+        expect_eq!(uuid2, uuid2_from_str, "uuid should match");
+        let bad_uuid_from_str = Uuid::new_from_string("4b4127e1-ca5c-4367-bdb5-05164005b7c45");
+        expect!(bad_uuid_from_str.is_err(), "shouldn't be able to parse string");
+        let bad_uuid_from_str = Uuid::new_from_string("4b4127e1-ca5c-4367-bdbq-05164005b7c4");
+        expect!(bad_uuid_from_str.is_err(), "shouldn't be able to parse string");
+        let bad_uuid_from_str = Uuid::new_from_string("4b4127e1-ca5c-4367-bdb5005164005b7c4");
+        expect!(bad_uuid_from_str.is_err(), "shouldn't be able to parse string");
+        let bad_uuid_from_str = Uuid::new_from_string("4b41-7e1-ca5c-4367-bdb5-05164005b7c4");
+        expect!(bad_uuid_from_str.is_err(), "shouldn't be able to parse string");
+        let bad_uuid_from_str = Uuid::new_from_string("4b4127e1-ca5c-4367-bd-b505164005b7c4");
+        expect!(bad_uuid_from_str.is_err(), "shouldn't be able to parse string");
     }
 }

@@ -52,7 +52,7 @@ TRUSTY_APP_MANIFEST_BIN := $(BUILDDIR)/$(TRUSTY_APP_NAME).manifest
 
 # Save the manifest path for use in user-tasks.mk
 _MODULES_$(MODULE)_TRUSTY_APP_MANIFEST_BIN := $(TRUSTY_APP_MANIFEST_BIN)
-$(info generating manifest for $(MODULE): $(TRUSTY_APP_MANIFEST_BIN))
+$(INFO_DONE $(MODULE),generating manifest,$(TRUSTY_APP_MANIFEST_BIN))
 
 # TODO Until the SDK supports library variants, this flag will only work as
 # intended for applications that have no library dependencies.
@@ -71,14 +71,16 @@ endif
 $(TRUSTY_APP_MANIFEST_BIN): MANIFEST_COMPILER := $(MANIFEST_COMPILER)
 $(TRUSTY_APP_MANIFEST_BIN): PY3 := $(PY3)
 $(TRUSTY_APP_MANIFEST_BIN): CONFIG_CONSTANTS := $(MODULE_CONSTANTS)
+$(TRUSTY_APP_MANIFEST_BIN): MODULE := $(MODULE)
 $(TRUSTY_APP_MANIFEST_BIN): MANIFEST := $(MANIFEST)
 $(TRUSTY_APP_MANIFEST_BIN): MANIFEST_OVERLAY := $(MANIFEST_OVERLAY)
 $(TRUSTY_APP_MANIFEST_BIN): HEADER_DIR := $(CONSTANTS_HEADER_DIR)
 $(TRUSTY_APP_MANIFEST_BIN): $(MANIFEST) $(MANIFEST_OVERLAY) $(MANIFEST_COMPILER) $(MODULE_CONSTANTS)
 	@$(MKDIR)
-	@echo compiling $< to $@
-	$(PY3) $(MANIFEST_COMPILER) $(addprefix -i,$(MANIFEST) $(MANIFEST_OVERLAY)) -o $@ $(addprefix -c,$(CONFIG_CONSTANTS)) --header-dir $(HEADER_DIR) \
+	@$(call ECHO,$(MODULE),compiling,$< to $@)
+	$(NOECHO)$(PY3) $(MANIFEST_COMPILER) $(addprefix -i,$(MANIFEST) $(MANIFEST_OVERLAY)) -o $@ $(addprefix -c,$(CONFIG_CONSTANTS)) --header-dir $(HEADER_DIR) \
 	$(TRUSTY_APP_ENABLE_SCS) $(DEFAULT_USER_SHADOW_STACK_SIZE)
+	@$(call ECHO_DONE_SILENT,$(MODULE),compiling,$< to $@)
 
 # We need the constants headers to be generated before the sources are compiled
 MODULE_SRCDEPS += $(TRUSTY_APP_MANIFEST_BIN)
@@ -88,16 +90,21 @@ else # we are not building an app
 ifneq ($(strip $(MODULE_CONSTANTS)),)
 
 # generate shared constants headers if only constants and no manifest provided
-$(CONSTANTS_HEADER_DIR): MANIFEST_COMPILER := $(MANIFEST_COMPILER)
-$(CONSTANTS_HEADER_DIR): PY3 := $(PY3)
-$(CONSTANTS_HEADER_DIR): CONFIG_CONSTANTS := $(MODULE_CONSTANTS)
-$(CONSTANTS_HEADER_DIR): HEADER_DIR := $(CONSTANTS_HEADER_DIR)
-$(CONSTANTS_HEADER_DIR): $(MANIFEST_COMPILER) $(MODULE_CONSTANTS)
+# generate also a hidden generated for each module that will
+# say that constants are already generated for this module
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): MANIFEST_COMPILER := $(MANIFEST_COMPILER)
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): PY3 := $(PY3)
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): MODULE := $(MODULE)
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): CONFIG_CONSTANTS := $(MODULE_CONSTANTS)
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): HEADER_DIR := $(CONSTANTS_HEADER_DIR)
+$(CONSTANTS_HEADER_DIR)/.generated/$(MODULE): $(MANIFEST_COMPILER) $(MODULE_CONSTANTS)
 	@$(MKDIR)
-	@echo compiling constants for $(MODULE)
-	$(PY3) $(MANIFEST_COMPILER) $(addprefix -c,$(CONFIG_CONSTANTS)) --header-dir $(HEADER_DIR)
+	@$(call ECHO,$(MODULE),compiling constants,for $(MODULE))
+	$(NOECHO)$(PY3) $(MANIFEST_COMPILER) $(addprefix -c,$(CONFIG_CONSTANTS)) --header-dir $(HEADER_DIR)
+	@touch $(HEADER_DIR)/.generated/$(MODULE)
+	@$(call ECHO_DONE_SILENT,$(MODULE),compiling constants,for $(MODULE))
 
-MODULE_SRCDEPS += $(CONSTANTS_HEADER_DIR)
+MODULE_SRCDEPS += $(CONSTANTS_HEADER_DIR)/.generated/$(MODULE)
 
 endif # MODULE_CONSTANTS is non-empty
 

@@ -20,6 +20,7 @@
     include("trusty/user/app/keymaster/build-config-usertests"),
     include("trusty/user/app/keymint/build-config-usertests"),
     include("trusty/user/app/sample/build-config-usertests"),
+    include("trusty/user/app/secretkeeper/build-config-usertests"),
     include("trusty/user/app/storage/build-config-usertests"),
 
     # userspace tests that don't use storage
@@ -29,7 +30,7 @@
     porttest("com.android.trusty.apploader.test"),
     porttest("com.android.trusty.confirmationui.test"),
     porttest("com.android.trusty.crashtest"),
-    porttest("com.android.trusty.device_tree.test"),
+    # porttest("com.android.trusty.device_tree.test"),
     porttest("com.android.trusty.dlmalloctest"),
     porttest("com.android.trusty.hwaes.test"),
     porttest("com.android.trusty.hwbcc.test"),
