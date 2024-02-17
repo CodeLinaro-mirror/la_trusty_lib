@@ -21,10 +21,13 @@ MODULE_SRCS := $(LOCAL_DIR)/src/lib.rs
 
 MODULE_CRATE_NAME := tipc
 
+MODULE_SDK_LIB_NAME := tipc-rust
+
 MODULE_INCLUDES += \
 	trusty/user/base/lib/tipc/test/include \
 
 MODULE_LIBRARY_EXPORTED_DEPS += \
+	external/rust/crates/arrayvec \
 	trusty/user/base/lib/libc-trusty \
 	$(call FIND_CRATE,log) \
 	trusty/user/base/lib/trusty-std \
@@ -39,6 +42,7 @@ MODULE_BINDGEN_ALLOW_VARS := \
 	INFINITE_TIME \
 	MAX_USER_HANDLES \
 	USER_BASE_HANDLE \
+	UUID_STR_SIZE \
 
 MODULE_BINDGEN_SRC_HEADER := $(LOCAL_DIR)/bindings.h
 
