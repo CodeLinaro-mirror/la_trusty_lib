@@ -335,10 +335,10 @@ _MODULES_$(MODULE)_ASMFLAGS := $(MODULE_EXPORT_ASMFLAGS)
 _MODULES_$(MODULE)_INCLUDES := $(MODULE_EXPORT_INCLUDES)
 _MODULES_$(MODULE)_LDFLAGS := $(MODULE_EXPORT_LDFLAGS)
 _MODULES_$(MODULE)_SRCDEPS := $(MODULE_EXPORT_SRCDEPS)
+_MODULES_$(MODULE)_RUST_STEM := $(MODULE_RUST_STEM)
 ifeq ($(filter $(MODULE),$(TRUSTY_SDK_MODULES)),)
 ifeq ($(call TOBOOL,$(MODULE_IS_RUST)),true)
 _MODULES_$(MODULE)_CRATE_NAME := $(MODULE_CRATE_NAME)
-_MODULES_$(MODULE)_RUST_STEM := $(MODULE_RUST_STEM)
 
 # Memorize the output headers for this module so that we can add them as srcdeps
 # to dependencies
@@ -451,7 +451,7 @@ define CRATE_CONFIG :=
 	"root_module": "$(filter %.rs,$(MODULE_SRCS))",
 	"edition": "$(MODULE_RUST_EDITION)",
 	"deps": [
-		$(call STRIP_TRAILING_COMMA,$(foreach dep,$(sort $(MODULE_LIBRARY_DEPS)),\
+		$(call STRIP_TRAILING_COMMA,$(foreach dep,$(sort $(MODULE_LIBRARY_DEPS) $(MODULE_LIBRARY_EXPORTED_DEPS)),\
 				$(if $(_MODULES_$(dep)_RUST_STEM),{"name": "$(_MODULES_$(dep)_RUST_STEM)"$(COMMA) "crate": $(_MODULES_$(dep)_CRATE_INDEX)}$(COMMA))))
 	]
 },
