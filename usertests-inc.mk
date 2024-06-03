@@ -35,6 +35,7 @@ TRUSTY_USER_TESTS += \
 	trusty/user/base/app/metrics/test/crasher \
 	trusty/user/base/app/hwaes-unittest \
 	trusty/user/base/app/hwaes-benchmark \
+	trusty/user/base/app/swaes-benchmark \
 	trusty/user/base/lib/hwbcc/test \
 	trusty/user/base/lib/keymaster/test \
 	trusty/user/base/lib/libc-trusty/test \
@@ -43,6 +44,9 @@ TRUSTY_USER_TESTS += \
 	trusty/user/base/lib/tipc/test/main \
 	trusty/user/base/lib/tipc/test/srv \
 	trusty/user/base/lib/uirq/test \
+	trusty/user/base/app/cfi-test \
+	trusty/user/base/app/cfi-test/cfi-crasher \
+
 
 ifeq (false,$(call TOBOOL,$(CONFIRMATIONUI_DISABLED)))
 TRUSTY_USER_TESTS += \
@@ -58,13 +62,6 @@ endif
 ifeq (true,$(call TOBOOL,$(USER_HWASAN_ENABLED)))
 TRUSTY_USER_TESTS += \
 	trusty/user/base/lib/hwasan/test \
-
-endif
-
-ifeq (true,$(call TOBOOL,$(USER_CFI_ENABLED)))
-TRUSTY_USER_TESTS += \
-	trusty/user/base/app/cfi-test \
-	trusty/user/base/app/cfi-test/cfi-crasher \
 
 endif
 

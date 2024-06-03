@@ -34,6 +34,7 @@
 #include <uapi/err.h>
 
 #ifdef UNITTEST_COVERAGE
+#define PAGE_SIZE getauxval(AT_PAGESZ)
 static struct cov_ctx ctx;
 /*
 This symbol is exported to each instrumented shared library and
@@ -57,10 +58,12 @@ void dump_shm(void) {
     }
     struct control *control = (struct control *)ctx.data.base;
     uint64_t flags = READ_ONCE(control->cntrl_flags);
-    if ( (flags & FLAG_RUN) != 0) {
+    uint64_t read_cnt = READ_ONCE(control->read_buffer_cnt);
+    if ( ((flags & FLAG_RUN) != 0) && (read_cnt == control->write_buffer_start_count) ) {
         uint64_t count =  control->write_buffer_start_count + 1;
         WRITE_ONCE(control->write_buffer_start_count, count);
         __llvm_profile_write_buffer((char *)control + sizeof(struct control));
+        __llvm_profile_reset_counters();
         WRITE_ONCE(control->write_buffer_complete_count, count);
     }
 }
@@ -73,7 +76,11 @@ int setup_shm(void) {
     size_t shm_len;
 
     if(ctx.mailbox.base == NULL) {
-        TLOGE("Mailbox not setup\n");
+        // For aggregator and client, mailbox is expected to be NULL
+        // Skip print for such cases
+        if(!ctx.skip_mailbox) {
+            TLOGE("Mailbox not setup\n");
+        }
         return -1;
     }
 
@@ -123,10 +130,14 @@ int setup_mailbox(const struct tipc_port* ports, uint32_t num_ports) {
     struct coverage_aggregator_req req;
     struct coverage_aggregator_resp resp;
 
+    ctx.skip_mailbox = false;
+
     for (i = 0; i < num_ports; i++) {
         // Skip for coverage aggregator and client
         if (strcmp(ports[i].name, LINE_COVERAGE_AGGREGATOR_PORT) == 0 ||
                 strcmp(ports[i].name, LINE_COVERAGE_CLIENT_PORT) == 0) {
+            ctx.skip_mailbox = true;
+            ctx.coverage_srv = INVALID_IPC_HANDLE;
             ctx.mailbox.base = NULL;
             return -1;
         }
@@ -140,7 +151,7 @@ int setup_mailbox(const struct tipc_port* ports, uint32_t num_ports) {
 
     memset(&req, 0, sizeof(struct coverage_aggregator_req));
     req.hdr.cmd = COVERAGE_AGGREGATOR_CMD_REGISTER;
-    req.register_args.record_len = buf_len + sizeof(struct control);
+    req.register_args.record_len = round_up(buf_len + sizeof(struct control), PAGE_SIZE);
 
     rc = coverage_aggregator_rpc(chan, &req, NULL, &resp, &memref);
     if (rc != NO_ERROR) {
