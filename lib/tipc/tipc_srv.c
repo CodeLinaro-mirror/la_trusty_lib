@@ -120,7 +120,7 @@ static void tipc_chan_close(struct chan_ctx* chan) {
     free(chan);
 
     /*  cleanup user allocated state if any */
-    if (user_ctx) {
+    if (srv->ops->on_channel_cleanup && user_ctx) {
         srv->ops->on_channel_cleanup(user_ctx);
     }
 }
@@ -163,6 +163,24 @@ static void chan_event_handler_proc(const struct uevent* ev, void* chan_ctx) {
 
         tipc_chan_close(chan);
         return;
+    }
+
+    if (ev->event & IPC_HANDLE_POLL_SEND_UNBLOCKED) {
+        if (srv->ops->on_send_unblocked) {
+            rc = srv->ops->on_send_unblocked(chan->port->cfg, chan->handle,
+                                             chan->user_ctx);
+            if (rc < 0) {
+                /* report an error and close channel */
+                TLOGE("failed (%d) to handle event on channel %d\n", rc,
+                      ev->handle);
+                tipc_chan_close(chan);
+                return;
+            }
+        } else {
+            TLOGE("send-unblocking not handled for channel %d\n", ev->handle);
+            tipc_chan_close(chan);
+            return;
+        }
     }
 }
 

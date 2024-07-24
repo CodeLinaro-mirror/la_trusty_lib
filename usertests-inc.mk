@@ -34,7 +34,6 @@ TRUSTY_USER_TESTS += \
 	trusty/user/base/lib/dlmalloc/test/srv \
 	trusty/user/base/app/metrics/test/crasher \
 	trusty/user/base/app/hwaes-unittest \
-	trusty/user/base/app/hwaes-benchmark \
 	trusty/user/base/lib/hwbcc/test \
 	trusty/user/base/lib/keymaster/test \
 	trusty/user/base/lib/libc-trusty/test \
@@ -43,6 +42,14 @@ TRUSTY_USER_TESTS += \
 	trusty/user/base/lib/tipc/test/main \
 	trusty/user/base/lib/tipc/test/srv \
 	trusty/user/base/lib/uirq/test \
+	trusty/user/base/app/cfi-test \
+	trusty/user/base/app/cfi-test/cfi-crasher \
+
+ifneq (true,$(call TOBOOL,$(UNITTEST_COVERAGE_ENABLED)))
+TRUSTY_USER_TESTS += \
+	trusty/user/base/app/hwaes-benchmark \
+	trusty/user/base/app/swaes-benchmark
+endif
 
 ifeq (false,$(call TOBOOL,$(CONFIRMATIONUI_DISABLED)))
 TRUSTY_USER_TESTS += \
@@ -58,13 +65,6 @@ endif
 ifeq (true,$(call TOBOOL,$(USER_HWASAN_ENABLED)))
 TRUSTY_USER_TESTS += \
 	trusty/user/base/lib/hwasan/test \
-
-endif
-
-ifeq (true,$(call TOBOOL,$(USER_CFI_ENABLED)))
-TRUSTY_USER_TESTS += \
-	trusty/user/base/app/cfi-test \
-	trusty/user/base/app/cfi-test/cfi-crasher \
 
 endif
 
@@ -89,6 +89,7 @@ TRUSTY_LOADABLE_USER_TASKS += \
 	trusty/user/base/app/apploader/tests/encryption_test_apps/encrypted_app/encryption_required \
 	trusty/user/base/app/apploader/tests/encryption_test_apps/unencrypted_app/encryption_optional \
 	trusty/user/base/app/apploader/tests/encryption_test_apps/unencrypted_app/encryption_required \
+	trusty/user/base/app/apploader/tests/integrity_test_app \
 
 TRUSTY_LOADABLE_USER_TESTS += \
 	trusty/user/base/app/trusty-crasher \

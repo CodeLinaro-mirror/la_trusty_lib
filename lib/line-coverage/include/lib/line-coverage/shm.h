@@ -32,9 +32,9 @@ typedef uint8_t counter_t;
 struct control {
     /* Written by controller, read by instrumented TA */
     uint64_t        cntrl_flags;
+    uint64_t        read_buffer_cnt;
 
     /* Written by instrumented TA, read by controller */
-    uint64_t        oper_flags;
     uint64_t        write_buffer_start_count;
     uint64_t        write_buffer_complete_count;
 };
@@ -45,6 +45,7 @@ struct cov_ctx {
     struct cov_shm mailbox;
     struct cov_shm data;
     size_t record_len;
+    bool skip_mailbox;
 };
 
 /**
