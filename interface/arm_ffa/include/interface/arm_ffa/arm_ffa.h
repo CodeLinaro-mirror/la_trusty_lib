@@ -537,6 +537,15 @@ enum ffa_error {
 #define SMC_FC_FFA_MSG_WAIT SMC_FASTCALL_NR_SHARED_MEMORY(0x6B)
 
 /**
+ * SMC_FC_FFA_MSG_RUN - SMC opcode to allocate cycles to an endpoint
+ *
+ * Register arguments:
+ *
+ * * w1:     SP/VM ID in [31:16], vCPU in [15:0]
+ */
+#define SMC_FC_FFA_RUN SMC_FASTCALL_NR_SHARED_MEMORY(0x6D)
+
+/**
  * SMC_FC_FFA_MSG_SEND_DIRECT_REQ - 32 bit SMC opcode to send direct message as
  *                                  a request
  *
@@ -760,6 +769,26 @@ enum ffa_error {
  * * w1/x1-w5/x5:    See opcode in w0.
  */
 #define SMC_FC_FFA_MEM_FRAG_TX SMC_FASTCALL_NR_SHARED_MEMORY(0x7B)
+
+/**
+ * SMC_FC_FFA_CONSOLE_LOG - SMC opcode to log to console
+ *
+ * Register arguments:
+ *
+ * * w1:  Count of characters
+ * * w2/x2-w7/x7: Packed characters
+ *
+ * Return:
+ * * w0:     &SMC_FC_FFA_SUCCESS
+ *
+ * or
+ *
+ * * w0:     &SMC_FC_FFA_ERROR
+ * * w2:     Error code (&enum ffa_error)
+ * * w3:     Num characters logged (if w2 is RETRY)
+ */
+#define SMC_FC_FFA_CONSOLE_LOG SMC_FASTCALL_NR_SHARED_MEMORY(0x8A)
+#define SMC_FC64_FFA_CONSOLE_LOG SMC_FASTCALL64_NR_SHARED_MEMORY(0x8A)
 
 /* FF-A v1.1 */
 /**
