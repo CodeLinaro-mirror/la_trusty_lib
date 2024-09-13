@@ -46,7 +46,10 @@ static inline bool shm_is_mapped(struct chan_ctx* ctx) {
 
 static inline void shm_unmap(struct chan_ctx* ctx) {
     if (shm_is_mapped(ctx)) {
-        munmap(ctx->shm.buf, ctx->shm.capacity);
+        int rc = munmap(ctx->shm.buf, ctx->shm.capacity);
+        if (rc != NO_ERROR) {
+            TLOGW("munmap() failed: %d\n", rc);
+        }
         mb_destroy(&ctx->shm);
         close(ctx->shm_handle);
         ctx->shm_handle = INVALID_IPC_HANDLE;
@@ -117,7 +120,7 @@ static int handle_msg_shm_map_req(handle_t chan,
                                   struct chan_ctx* ctx,
                                   struct spi_shm_map_req* shm_req,
                                   handle_t shm_handle) {
-    int rc = NO_ERROR;
+    int rc1, rc = NO_ERROR;
     void* shm_base;
 
     shm_unmap(ctx);
@@ -148,7 +151,10 @@ static int handle_msg_shm_map_req(handle_t chan,
     return NO_ERROR;
 
 err_resp:
-    munmap(shm_base, shm_req->len);
+    rc1 = munmap(shm_base, shm_req->len);
+    if (rc1 != NO_ERROR) {
+        TLOGW("munmap() failed: %d\n", rc);
+    }
 err_mmap:
     return rc;
 }
@@ -307,7 +313,12 @@ int add_spi_service(struct tipc_hset* hset,
             return ERR_INVALID_ARGS;
         }
 
-        rc = tipc_add_service(hset, &ports[i], 1, 1, &spi_dev_ops);
+#if TEST_BUILD
+        const uint32_t max_chan_cnt = 2;
+#else
+        const uint32_t max_chan_cnt = 1;
+#endif
+        rc = tipc_add_service(hset, &ports[i], 1, max_chan_cnt, &spi_dev_ops);
         if (rc != NO_ERROR) {
             return rc;
         }
