@@ -25,11 +25,13 @@ MODULE_SRCS := \
 	$(LOCAL_DIR)/main.cpp \
 
 MODULE_LIBRARY_DEPS += \
+	external/boringssl \
 	trusty/kernel/lib/shared/binder_discover \
 	trusty/user/base/lib/libc-trusty \
 	trusty/user/base/lib/libstdc++-trusty \
 	trusty/user/base/lib/metrics_atoms \
 	trusty/user/base/lib/tipc \
+	trusty/user/base/lib/unittest \
 	trusty/user/base/interface/metrics \
 
 include make/trusted_app.mk
