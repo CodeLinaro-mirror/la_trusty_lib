@@ -21,6 +21,7 @@
 #include <lib/tipc/tipc.h>
 #include <lib/tipc/tipc_srv.h>
 #include <metrics_consts.h>
+#include <openssl/sha.h>
 #include <stddef.h>
 #include <string.h>
 #include <trusty_log.h>
@@ -59,16 +60,48 @@ static int on_connect(const struct tipc_port* port,
     return NO_ERROR;
 }
 
+void hash_trusty_metrics(uint64_t metric, char *app_id, uint8_t *output) {
+
+    const unsigned char CONST_SALT[] = {
+    0xf2, 0xe7, 0x8c, 0x19, 0xa4, 0xd3, 0x5b, 0x68
+    };
+
+    /* Convert the metric to an array of uint8_t prepended with salt*/
+    uint8_t metric_arr[8 + UUID_STR_SIZE + sizeof(CONST_SALT)];
+
+    memcpy(metric_arr, app_id, UUID_STR_SIZE);
+    memcpy(metric_arr+UUID_STR_SIZE, CONST_SALT, sizeof(CONST_SALT));
+
+    for (size_t i = 0; i < 8; ++i) {
+        metric_arr[i+ UUID_STR_SIZE + sizeof(CONST_SALT)] = (metric >> (8 * i)) & 0xFF;
+    }
+
+    SHA512(metric_arr, sizeof(metric_arr), output);
+}
+
 static int on_message(const struct tipc_port* port, handle_t chan, void* ctx) {
     int rc;
     struct metrics_req req;
     uint8_t msg[METRICS_MAX_MSG_SIZE];
 
     memset(msg, 0, sizeof(msg));
-    int msg_size = tipc_recv1(chan, sizeof(req), msg, sizeof(msg));
+    int msg_size = tipc_recv1(chan, sizeof(req),  msg, sizeof(msg));
     if (msg_size < 0) {
         TLOGE("failed (%d) to receive metrics event\n", msg_size);
         return msg_size;
+    }
+
+    uint32_t cmd;
+    cmd = ((struct metrics_req*)msg)->cmd;
+
+    if(cmd == METRICS_CMD_REPORT_CRASH) {
+        struct metrics_crash_msg *crash_msg = (struct metrics_crash_msg *)msg;
+        if (crash_msg->crash_args.is_hash) {
+            hash_trusty_metrics(crash_msg->crash_args.far, crash_msg->crash_args.app_id, crash_msg->crash_args.far_hash);
+            hash_trusty_metrics(crash_msg->crash_args.elr, crash_msg->crash_args.app_id, crash_msg->crash_args.elr_hash);
+            crash_msg->crash_args.far = 0;
+            crash_msg->crash_args.elr = 0;
+        }
     }
 
     // Check if NS metricsd connected, if so forward it there.
@@ -84,8 +117,6 @@ static int on_message(const struct tipc_port* port, handle_t chan, void* ctx) {
         TLOGD("NS metrics daemon not connected\n");
     }
 
-    uint32_t cmd;
-    cmd = ((struct metrics_req*)msg)->cmd;
     struct metrics_resp resp = {
         .cmd = (cmd | METRICS_CMD_RESP_BIT)
     };
