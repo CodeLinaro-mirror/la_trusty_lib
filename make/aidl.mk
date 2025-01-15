@@ -80,7 +80,7 @@ $(AIDL_SRCS): MODULE_AIDL_FLAGS := $(MODULE_AIDL_FLAGS)
 $(AIDL_SRCS): MODULE_AIDL_LANGUAGE := $(MODULE_AIDL_LANGUAGE)
 $(AIDL_SRCS): MODULE_AIDL_PACKAGE := $(MODULE_AIDL_PACKAGE)
 $(AIDL_SRCS): MODULE := $(MODULE)
-$(AIDL_SRCS): $(BUILDDIR)/%.$(AIDL_EXT): %.aidl
+$(AIDL_SRCS): $(BUILDDIR)/%.$(AIDL_EXT): %.aidl $(AIDL_TOOL)
 	@$(MKDIR)
 	@if [ -n "$(AIDL_HEADER_DIR)" ]; then mkdir -p $(AIDL_HEADER_DIR); fi
 	@$(call ECHO,$(MODULE),generating from AIDL,$@)
@@ -126,8 +126,8 @@ MODULE_LIBRARY_DEPS += \
 	$(call FIND_CRATE,async-trait) \
 	$(call FIND_CRATE,lazy_static) \
 
-# The AIDL compiler marks an aidl_data variable as mutable and rustc complains
-MODULE_RUSTFLAGS += -Aunused-mut -Aunused-variables
+# Disable all lints for auto-generated Rust sources
+MODULE_RUSTFLAGS += --cap-lints allow
 
 MODULE_SRCS += $(AIDL_ROOT_RS)
 MODULE_EXPORT_SRCDEPS += $(AIDL_ROOT_RS)
