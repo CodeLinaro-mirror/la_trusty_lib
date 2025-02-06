@@ -28,6 +28,7 @@
 mod test;
 
 mod err;
+pub mod srv;
 
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
@@ -42,6 +43,7 @@ pub use err::HwBccError;
 
 use core::ffi::CStr;
 use core::mem;
+use num_derive::FromPrimitive;
 use sys::*;
 use tipc::Serializer;
 use tipc::{Deserialize, Handle, Serialize};
@@ -51,7 +53,7 @@ use trusty_sys::{c_long, Error};
 // Constant defined in trusty/user/base/interface/hwbcc/include/interface/hwbcc
 pub const HWBCC_MAX_RESP_PAYLOAD_LENGTH: usize = HWBCC_MAX_RESP_PAYLOAD_SIZE as usize;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
 #[repr(u32)]
 enum BccCmd {
     RespBit = hwbcc_cmd_HWBCC_CMD_RESP_BIT,
@@ -72,10 +74,44 @@ impl BccCmd {
     }
 }
 /// Generic header for all hwbcc requests.
+#[derive(Debug, PartialEq)]
 struct BccMsgHeader {
     cmd: BccCmd,
     test_mode: HwBccMode,
     context: u64,
+}
+
+/// The request message for the hwbcc service.
+/// Note that the Serialize trait implementation ensures compatibility with
+/// C clients and servers. We do not depend on the representation of this
+/// struct for that compatibility.
+#[derive(Debug, PartialEq)]
+struct BccMsg<'a> {
+    header: BccMsgHeader,
+    sign_req: Option<SignDataMsg<'a>>,
+}
+
+impl<'a> BccMsg<'a> {
+    fn new(cmd: BccCmd, test_mode: HwBccMode, context: u64) -> Self {
+        Self { header: BccMsgHeader { cmd, test_mode, context }, sign_req: None }
+    }
+
+    fn add_signing_req(&mut self, algorithm: SigningAlgorithm, data: &'a [u8], aad: &'a [u8]) {
+        self.sign_req = Some(SignDataMsg::new(algorithm, data, aad));
+    }
+}
+
+impl<'s> Serialize<'s> for BccMsg<'s> {
+    fn serialize<'a: 's, S: Serializer<'s>>(
+        &'a self,
+        serializer: &mut S,
+    ) -> Result<S::Ok, S::Error> {
+        let ok = self.header.serialize(serializer)?;
+        if let Some(sign_req) = &self.sign_req {
+            return sign_req.serialize(serializer);
+        }
+        Ok(ok)
+    }
 }
 
 impl<'s> Serialize<'s> for BccMsgHeader {
@@ -95,8 +131,8 @@ impl<'s> Serialize<'s> for BccMsgHeader {
 }
 
 /// Request to sign data.
+#[derive(Debug, PartialEq)]
 struct SignDataMsg<'a> {
-    header: BccMsgHeader,
     /// Contains signing algorithm, data size, aad size
     algorithm: SigningAlgorithm,
     data: &'a [u8],
@@ -108,20 +144,8 @@ struct SignDataMsg<'a> {
 }
 
 impl<'a> SignDataMsg<'a> {
-    fn new(
-        header: BccMsgHeader,
-        algorithm: SigningAlgorithm,
-        data: &'a [u8],
-        aad: &'a [u8],
-    ) -> Self {
-        Self {
-            header,
-            algorithm,
-            data,
-            data_size: data.len() as u16,
-            aad,
-            aad_size: aad.len() as u32,
-        }
+    fn new(algorithm: SigningAlgorithm, data: &'a [u8], aad: &'a [u8]) -> Self {
+        Self { algorithm, data, data_size: data.len() as u16, aad, aad_size: aad.len() as u32 }
     }
 }
 
@@ -130,7 +154,6 @@ impl<'s> Serialize<'s> for SignDataMsg<'s> {
         &'a self,
         serializer: &mut S,
     ) -> Result<S::Ok, S::Error> {
-        self.header.serialize(serializer)?;
         // SAFETY:
         //  All serialized attributes are trivial types with
         //  corresponding C representations
@@ -199,7 +222,7 @@ impl Deserialize for HwBccResponse {
 /// and should differ with each invocation, intra-test.
 /// `Release` mode relies on the hwkey service to derive
 /// its key seed.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
 #[repr(u32)]
 pub enum HwBccMode {
     Release = 0,
@@ -210,7 +233,7 @@ pub enum HwBccMode {
 ///
 /// Project uses CBOR Object Signing and Encryption (COSE) encodings.
 #[non_exhaustive]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, FromPrimitive)]
 #[repr(i16)]
 pub enum SigningAlgorithm {
     ED25519 = hwbcc_algorithm_HWBCC_ALGORITHM_ED25519 as i16,
@@ -278,7 +301,7 @@ pub fn get_dice_artifacts<'a>(
     let session = Handle::connect(port)?;
 
     let cmd = BccCmd::GetDiceArtifacts;
-    session.send(&BccMsgHeader { cmd, test_mode: HwBccMode::Release, context })?;
+    session.send(&BccMsg::new(cmd, HwBccMode::Release, context))?;
 
     let res_buf = &mut [0u8; HWBCC_MAX_RESP_PAYLOAD_LENGTH];
     let response = recv_resp(&session, cmd, res_buf)?;
@@ -309,7 +332,7 @@ pub fn ns_deprivilege() -> Result<(), HwBccError> {
     let session = Handle::connect(port)?;
 
     let cmd = BccCmd::NsDeprivilege;
-    session.send(&BccMsgHeader { cmd, test_mode: HwBccMode::Release, context: 0 })?;
+    session.send(&BccMsg::new(cmd, HwBccMode::Release, 0))?;
 
     let res_buf = &mut [0u8; HWBCC_MAX_RESP_PAYLOAD_LENGTH];
     recv_resp(&session, cmd, res_buf)?;
@@ -341,7 +364,7 @@ pub fn get_bcc<'a>(test_mode: HwBccMode, bcc: &'a mut [u8]) -> Result<&'a [u8], 
     let session = Handle::connect(port)?;
 
     let cmd = BccCmd::GetBcc;
-    session.send(&BccMsgHeader { cmd, test_mode, context: 0 })?;
+    session.send(&BccMsg::new(cmd, test_mode, 0))?;
 
     let res_buf = &mut [0u8; HWBCC_MAX_RESP_PAYLOAD_LENGTH];
     let response = recv_resp(&session, cmd, res_buf)?;
@@ -388,8 +411,9 @@ pub fn sign_data<'a>(
     let session = Handle::connect(port)?;
 
     let cmd = BccCmd::SignData;
-    let req =
-        SignDataMsg::new(BccMsgHeader { cmd, test_mode, context: 0 }, cose_algorithm, data, aad);
+    let mut req = BccMsg::new(cmd, test_mode, 0);
+    req.add_signing_req(cose_algorithm, data, aad);
+
     session.send(&req)?;
 
     let res_buf = &mut [0u8; HWBCC_MAX_RESP_PAYLOAD_LENGTH];

@@ -17,7 +17,7 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-RUSTC_DEMANGLE_DIR = $(RUST_BINDIR)/../src/stdlibs/vendor/rustc-demangle
+RUSTC_DEMANGLE_DIR = $(RUST_BINDIR)/../lib/rustlib/src/rust/vendor/rustc-demangle
 
 MODULE_SRCS := $(RUSTC_DEMANGLE_DIR)/src/lib.rs
 
@@ -33,5 +33,9 @@ MODULE_LIBRARY_DEPS += \
 	trusty/user/base/lib/libcore-rust \
 
 MODULE_ADD_IMPLICIT_DEPS := false
+
+# TODO: figure out why as of Rust 1.82, rustdoc fails nsjailed Soong builds
+# whereas regular (build.py) builds still work.
+MODULE_SKIP_DOCS := true
 
 include make/library.mk

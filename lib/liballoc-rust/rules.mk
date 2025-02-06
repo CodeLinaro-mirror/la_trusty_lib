@@ -17,7 +17,7 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-LIBALLOC_DIR = $(RUST_BINDIR)/../src/stdlibs/library/alloc
+LIBALLOC_DIR = $(RUST_BINDIR)/../lib/rustlib/src/rust/library/alloc
 
 MODULE_SRCS := $(LIBALLOC_DIR)/src/lib.rs
 
@@ -35,5 +35,9 @@ MODULE_LIBRARY_EXPORTED_DEPS += \
 	trusty/user/base/lib/libcore-rust \
 
 MODULE_ADD_IMPLICIT_DEPS := false
+
+# TODO: figure out why as of Rust 1.82, rustdoc fails nsjailed Soong builds
+# whereas regular (build.py) builds still work fine.
+MODULE_SKIP_DOCS := true
 
 include make/library.mk

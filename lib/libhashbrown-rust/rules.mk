@@ -17,7 +17,7 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-HASHBROWN_DIR = $(RUST_BINDIR)/../src/stdlibs/vendor/hashbrown
+HASHBROWN_DIR = $(RUST_BINDIR)/../lib/rustlib/src/rust/vendor/hashbrown
 
 MODULE_SRCS := $(HASHBROWN_DIR)/src/lib.rs
 
@@ -42,5 +42,9 @@ MODULE_LIBRARY_DEPS += \
 	trusty/user/base/lib/libcore-rust \
 	trusty/user/base/lib/liballoc-rust \
 	trusty/user/base/lib/libcompiler_builtins-rust \
+
+# TODO: figure out why as of Rust 1.82, rustdoc fails nsjailed Soong builds
+# whereas regular (build.py) builds still work.
+MODULE_SKIP_DOCS := true
 
 include make/library.mk

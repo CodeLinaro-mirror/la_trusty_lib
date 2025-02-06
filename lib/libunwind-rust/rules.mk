@@ -17,7 +17,7 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-LIBUNWIND_DIR = $(RUST_BINDIR)/../src/stdlibs/library/unwind
+LIBUNWIND_DIR = $(RUST_BINDIR)/../lib/rustlib/src/rust/library/unwind
 
 MODULE_SRCS := $(LIBUNWIND_DIR)/src/lib.rs
 
@@ -32,5 +32,9 @@ MODULE_LIBRARY_DEPS += \
 	$(call FIND_CRATE,cfg-if) \
 
 MODULE_ADD_IMPLICIT_DEPS := false
+
+# TODO: figure out why as of Rust 1.82, rustdoc fails nsjailed Soong builds
+# whereas regular (build.py) builds still work.
+MODULE_SKIP_DOCS := true
 
 include make/library.mk
