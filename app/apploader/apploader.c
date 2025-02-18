@@ -269,6 +269,7 @@ static uint32_t apploader_send_secure_load_command(
 
 static uint32_t apploader_copy_package(handle_t req_handle,
                                        handle_t secure_chan,
+                                       uint64_t package_size,
                                        uint64_t aligned_size,
                                        uint8_t** out_package) {
     uint32_t resp_error;
@@ -305,12 +306,17 @@ static uint32_t apploader_copy_package(handle_t req_handle,
     }
 
     assert(out_package);
-    memcpy(resp_package, req_package, aligned_size);
+    assert(package_size <= aligned_size);
+    memcpy(resp_package, req_package, package_size);
+    memset(resp_package + package_size, 0, aligned_size - package_size);
     *out_package = resp_package;
     resp_error = APPLOADER_NO_ERROR;
 
-err_resp_mmap:
-    munmap(req_package, aligned_size);
+err_resp_mmap:;
+    int rc = munmap(req_package, aligned_size);
+    if (rc != NO_ERROR) {
+        TLOGW("munmap() failed: %d\n", rc);
+    }
 err_req_mmap:
     close(secure_mem_handle);
 err_invalid_secure_mem_handle:
@@ -384,8 +390,8 @@ static int apploader_handle_cmd_load_app(handle_t chan,
 
     uint32_t copy_error;
     uint8_t* package;
-    copy_error = apploader_copy_package(req_handle, secure_chan, aligned_size,
-                                        &package);
+    copy_error = apploader_copy_package(
+            req_handle, secure_chan, req->package_size, aligned_size, &package);
     if (copy_error != APPLOADER_NO_ERROR) {
         TLOGE("Failed to copy package from client\n");
         resp_error = copy_error;
@@ -480,7 +486,11 @@ static int apploader_handle_cmd_load_app(handle_t chan,
 
     ptrdiff_t elf_offset = pkg_meta.elf_start - package;
     ptrdiff_t manifest_offset = pkg_meta.manifest_start - package;
-    munmap(package, aligned_size);
+    rc = munmap(package, aligned_size);
+    if (rc != NO_ERROR) {
+        TLOGW("munmap() failed: %d\n", rc);
+    }
+
     package = NULL;
 
     /* Validate the relocated offsets */
@@ -502,7 +512,10 @@ err_no_load:
     }
 
     if (package) {
-        munmap(package, aligned_size);
+        rc = munmap(package, aligned_size);
+        if (rc != NO_ERROR) {
+            TLOGW("munmap() failed: %d\n", rc);
+        }
     }
 err_copy_package:
     close(secure_chan);
