@@ -390,12 +390,6 @@ impl fmt::Debug for Uuid {
     }
 }
 
-impl From<trusty_sys::uuid> for Uuid {
-    fn from(uuid: trusty_sys::uuid) -> Self {
-        Self(uuid)
-    }
-}
-
 impl alloc::string::ToString for Uuid {
     fn to_string(&self) -> String {
         format!("{:?}", self)
