@@ -29,7 +29,7 @@
 #endif
 
 #define FFA_CURRENT_VERSION_MAJOR (1U)
-#define FFA_CURRENT_VERSION_MINOR (1U)
+#define FFA_CURRENT_VERSION_MINOR (2U)
 
 #define FFA_VERSION_TO_MAJOR(version) ((version) >> 16)
 #define FFA_VERSION_TO_MINOR(version) ((version) & (0xffff))
@@ -571,6 +571,20 @@ enum ffa_error {
  * SMC_FC_FFA_MSG_WAIT - SMC opcode to transition from running to waiting state
  */
 #define SMC_FC_FFA_MSG_WAIT SMC_FASTCALL_NR_SHARED_MEMORY(0x6B)
+
+/**
+ * SMC_FC_FFA_YIELD - SMC opcode to yield execution back to the component that
+ *                    scheduled it.
+ *
+ * Register arguments:
+ *
+ * * w1:     Endpoint ID in [31:16], vCPU in [15:0].
+ * * w2:     Lower 32-bits of timeout interval in nanoseconds after which vCPU
+ *           in w1 must run.
+ * * w3:     Upper 32-bits of timeout interval in nanoseconds after which vCPU
+ *           in w1 must run.
+ */
+#define SMC_FC_FFA_YIELD SMC_FASTCALL_NR_SHARED_MEMORY(0x6C)
 
 /**
  * SMC_FC_FFA_MSG_RUN - SMC opcode to allocate cycles to an endpoint
