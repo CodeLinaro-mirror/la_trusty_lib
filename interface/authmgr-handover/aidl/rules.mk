@@ -12,25 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS := external/rust/android-crates-io/crates/hex/src/lib.rs
+MODULE_CRATE_NAME := authmgr_handover_aidl
 
-MODULE_CRATE_NAME := hex
+MODULE_AIDL_LANGUAGE := rust
 
-MODULE_RUSTFLAGS += \
-	--cfg 'feature="alloc"' \
-	--cfg 'feature="default"' \
-	--cfg 'feature="std"' \
+MODULE_AIDL_PACKAGE := android/trusty/handover
 
-MODULE_LIBRARY_DEPS += \
-	packages/modules/Virtualization/libs/dice/open_dice \
-	trusty/user/base/lib/authgraph-rust/core \
-	trusty/user/base/lib/authgraph-rust/wire \
-	trusty/user/base/lib/hex-rust \
-	$(call FIND_CRATE,coset) \
+MODULE_AIDLS := \
+    $(LOCAL_DIR)/$(MODULE_AIDL_PACKAGE)/ITrustedServicesHandover.aidl \
 
-include make/library.mk
+include make/aidl.mk
