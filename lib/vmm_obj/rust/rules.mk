@@ -1,4 +1,4 @@
-# Copyright (C) 2025 The Android Open Source Project
+# Copyright (C) 2024 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,20 +17,22 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS := external/rust/android-crates-io/crates/hex/src/lib.rs
+MODULE_SRCS := $(LOCAL_DIR)/src/lib.rs
 
-MODULE_CRATE_NAME := hex
+MODULE_CRATE_NAME := vmm_obj
 
-MODULE_RUSTFLAGS += \
-	--cfg 'feature="alloc"' \
-	--cfg 'feature="default"' \
-	--cfg 'feature="std"' \
+MODULE_SDK_LIB_NAME := vmm_obj-rust
 
 MODULE_LIBRARY_DEPS += \
-	packages/modules/Virtualization/libs/dice/open_dice \
-	trusty/user/base/lib/authgraph-rust/core \
-	trusty/user/base/lib/authgraph-rust/wire \
-	trusty/user/base/lib/hex-rust \
-	$(call FIND_CRATE,coset) \
+	trusty/user/base/interface/system_state \
+	$(call FIND_CRATE,log) \
+	trusty/user/base/lib/trusty-std \
+	trusty/user/base/lib/tipc/rust \
+	trusty/user/base/lib/vmm_obj \
+
+MODULE_BINDGEN_ALLOW_FUNCTIONS := \
+	vmm_obj_.* \
+
+MODULE_BINDGEN_SRC_HEADER := $(LOCAL_DIR)/bindings.h
 
 include make/library.mk

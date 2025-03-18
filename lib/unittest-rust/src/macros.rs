@@ -29,7 +29,8 @@
  * limitations under the License.
  */
 
-/// Expects two expressions are equal to each other (using [`PartialEq`]).
+/// Expects two expressions are equal to each other (using
+/// [std::cmp::PartialEq]).
 ///
 /// On failure, this macro will print the values of the expressions with their
 /// debug representations and signal the failure to the test framework. The test
@@ -53,11 +54,16 @@ macro_rules! expect_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    let kind = $crate::asserts::AssertKind::Eq;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::None);
+                    let kind = $crate::__internal_macro_utils::AssertKind::Eq;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::None
+                    );
                 }
             }
         }
@@ -66,18 +72,24 @@ macro_rules! expect_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    let kind = $crate::asserts::AssertKind::Eq;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::Some(core::format_args!($($arg)+)));
+                    let kind = $crate::__internal_macro_utils::AssertKind::Eq;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                 }
             }
         }
     });
 }
 
-/// Asserts that two expressions are equal to each other (using [`PartialEq`]).
+/// Asserts that two expressions are equal to each other (using
+/// [std::cmp::PartialEq]).
 ///
 /// Unlike [`core::assert_eq!`], this macro will not panic, but instead returns
 /// early from a test function.
@@ -100,11 +112,16 @@ macro_rules! assert_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    let kind = $crate::asserts::AssertKind::Eq;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::None);
+                    let kind = $crate::__internal_macro_utils::AssertKind::Eq;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::None
+                    );
                     return;
                 }
             }
@@ -114,11 +131,16 @@ macro_rules! assert_eq {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
-                    let kind = $crate::asserts::AssertKind::Eq;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::Some(core::format_args!($($arg)+)));
+                    let kind = $crate::__internal_macro_utils::AssertKind::Eq;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                     return;
                 }
             }
@@ -126,7 +148,8 @@ macro_rules! assert_eq {
     });
 }
 
-/// Expects that two expressions are not equal to each other (using [`PartialEq`]).
+/// Expects that two expressions are not equal to each other (using
+/// [std::cmp::PartialEq]).
 ///
 /// On failure, this macro will print the values of the expressions with their
 /// debug representations and signal the failure to the test framework. The test
@@ -150,11 +173,16 @@ macro_rules! expect_ne {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if *left_val == *right_val {
-                    let kind = $crate::asserts::AssertKind::Ne;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::None);
+                    let kind = $crate::__internal_macro_utils::AssertKind::Ne;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::None
+                    );
                 }
             }
         }
@@ -163,18 +191,24 @@ macro_rules! expect_ne {
         match (&($left), &($right)) {
             (left_val, right_val) => {
                 if *left_val == *right_val {
-                    let kind = $crate::asserts::AssertKind::Ne;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::Some(core::format_args!($($arg)+)));
+                    let kind = $crate::__internal_macro_utils::AssertKind::Ne;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                 }
             }
         }
     });
 }
 
-/// Asserts that two expressions are not equal to each other (using [`PartialEq`]).
+/// Asserts that two expressions are not equal to each other (using
+/// [std::cmp::PartialEq]).
 ///
 /// Unlike [`core::assert_ne!`], this macro will not panic, but instead returns
 /// early from a test function.
@@ -197,11 +231,16 @@ macro_rules! assert_ne {
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if *left_val == *right_val {
-                    let kind = $crate::asserts::AssertKind::Ne;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::None);
+                    let kind = $crate::__internal_macro_utils::AssertKind::Ne;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::None
+                    );
                     return;
                 }
             }
@@ -211,11 +250,16 @@ macro_rules! assert_ne {
         match (&($left), &($right)) {
             (left_val, right_val) => {
                 if *left_val == *right_val {
-                    let kind = $crate::asserts::AssertKind::Ne;
-                    // The reborrows below are intentional. Without them, the stack slot for the
-                    // borrow is initialized even before the values are compared, leading to a
-                    // noticeable slow down.
-                    $crate::asserts::assert_failed(kind, &*left_val, &*right_val, core::option::Option::Some(core::format_args!($($arg)+)));
+                    let kind = $crate::__internal_macro_utils::AssertKind::Ne;
+                    // The reborrows below are intentional. Without them, the
+                    // stack slot for the borrow is initialized even before the
+                    // values are compared, leading to a noticeable slow down.
+                    $crate::__internal_macro_utils::assert_failed(
+                        kind,
+                        &*left_val,
+                        &*right_val,
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                     return;
                 }
             }
@@ -226,14 +270,23 @@ macro_rules! assert_ne {
 /// Asserts that a `Result` expression is `Ok`
 ///
 /// On failure, this macro will print an error message containing the `Err`
-/// (The `Err` value must implement [`std::fmt::Display`].) value and signal
-/// the failure to the test framework. On success, the macro expression will
-/// evaluate to the unwrapped `Ok` value.
+/// value and signal the failure to the test framework. On success, the macro
+/// expression will evaluate to the unwrapped `Ok` value.
 ///
 /// Like [`assert!`], this macro has a second form, where a custom error
 /// message can be provided with or without arguments for formatting. See
 /// [`core::fmt`] for syntax for this form. Expressions used as format arguments
 /// will only be evaluated if the assertion fails.
+///
+/// Failures will include a best-effort representation of the error value in the
+/// error message. It will use the [std::fmt::Display], [std::fmt::Debug], or
+/// [std::any::type_name] in that order of priority, depending on which ones are
+/// implemented for the error type. (This is implemented with
+/// [autoderef specialization], so it will work for concrete types, but using it
+/// for unconstrained generic `T` will always use the [std::any::type_name]
+/// impl, regardless of what traits the type actually implements. Similarly, if
+/// the type is declared as `T: Debug`, the [std::fmt::Debug] impl will be
+/// invoked, even if the concrete type implements [std::fmt::Display] as well.)
 ///
 /// # Examples
 ///
@@ -244,13 +297,26 @@ macro_rules! assert_ne {
 /// let y: Result<usize, String> = Ok(x);
 /// assert_ok!(y, "something went wrong; x was {}", x);
 /// ```
+///
+/// [autoderef specialization]: https://lukaskalbertodt.github.io/2019/12/05/generalized-autoref-based-specialization.html
 #[macro_export]
 macro_rules! assert_ok {
     ($result:expr $(,)?) => ({
         match ($result) {
             Ok(t) => t,
             Err(e) => {
-                $crate::asserts::assert_err(core::stringify!($result), &e, core::option::Option::None);
+                use $crate::__internal_macro_utils::{
+                    DisplayKind as _,
+                    DebugKind as _,
+                    TypenameKind as _,
+                };
+                $crate::__internal_macro_utils::assert_ok_failed(
+                    core::stringify!($result),
+                    (&&&$crate::__internal_macro_utils::BestEffortDisplay(&e))
+                        .display_kind()
+                        .wrap(e),
+                    core::option::Option::None
+                );
                 return;
             }
         }
@@ -259,7 +325,18 @@ macro_rules! assert_ok {
         match ($result) {
             Ok(t) => t,
             Err(e) => {
-                $crate::asserts::assert_err(core::stringify!($result), &e, core::option::Option::Some(core::format_args!($($arg)+)));
+                use $crate::__internal_macro_utils::{
+                    DisplayKind as _,
+                    DebugKind as _,
+                    TypenameKind as _,
+                };
+                $crate::__internal_macro_utils::assert_ok_failed(
+                    core::stringify!($result),
+                    (&&&$crate::__internal_macro_utils::BestEffortDisplay(&e))
+                        .display_kind()
+                        .wrap(e),
+                    core::option::Option::Some(core::format_args!($($arg)+))
+                );
                 return;
             }
         }
@@ -283,7 +360,10 @@ macro_rules! expect {
         match (&($cond)) {
             (cond) => {
                 if (!*cond) {
-                    $crate::asserts::simple_assert_failed(core::stringify!($cond), core::option::Option::None);
+                    $crate::__internal_macro_utils::simple_assert_failed(
+                        core::stringify!($cond),
+                        core::option::Option::None
+                    );
                 }
             }
         }
@@ -292,7 +372,10 @@ macro_rules! expect {
         match (&($cond)) {
             (cond) => {
                 if (!*cond) {
-                    $crate::asserts::simple_assert_failed(core::stringify!($cond), core::option::Option::Some(core::format_args!($($arg)+)));
+                    $crate::__internal_macro_utils::simple_assert_failed(
+                        core::stringify!($cond),
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                 }
             }
         }
@@ -316,7 +399,10 @@ macro_rules! assert {
         match (&($cond)) {
             (cond) => {
                 if (!*cond) {
-                    $crate::asserts::simple_assert_failed(core::stringify!($cond), core::option::Option::None);
+                    $crate::__internal_macro_utils::simple_assert_failed(
+                        core::stringify!($cond),
+                        core::option::Option::None
+                    );
                     return;
                 }
             }
@@ -326,7 +412,10 @@ macro_rules! assert {
         match (&($cond)) {
             (cond) => {
                 if (!*cond) {
-                    $crate::asserts::simple_assert_failed(core::stringify!($cond), core::option::Option::Some(core::format_args!($($arg)+)));
+                    $crate::__internal_macro_utils::simple_assert_failed(
+                        core::stringify!($cond),
+                        core::option::Option::Some(core::format_args!($($arg)+))
+                    );
                     return;
                 }
             }
@@ -344,11 +433,17 @@ macro_rules! assert {
 #[macro_export]
 macro_rules! fail {
     () => ({
-        $crate::asserts::simple_assert_failed("encountered test failure", core::option::Option::None);
+        $crate::__internal_macro_utils::simple_assert_failed(
+            "encountered test failure",
+            core::option::Option::None
+        );
         return;
     });
     ($($arg:tt)+) => ({
-        $crate::asserts::simple_assert_failed("encountered test failure", core::option::Option::Some(core::format_args!($($arg)+)));
+        $crate::__internal_macro_utils::simple_assert_failed(
+            "encountered test failure",
+            core::option::Option::Some(core::format_args!($($arg)+))
+        );
         return;
     });
 }
@@ -364,7 +459,11 @@ macro_rules! skip {
         return;
     });
     ($($arg:tt)+) => ({
-        std::eprintln!("test skipped: {}, {}", core::format_args!($($arg)+), std::panic::Location::caller());
+        std::eprintln!(
+            "test skipped: {}, {}",
+            core::format_args!($($arg)+),
+            std::panic::Location::caller()
+        );
         $crate::skip();
         return;
     });
