@@ -17,20 +17,14 @@ LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-MODULE_SRCS := external/rust/android-crates-io/crates/hex/src/lib.rs
+MODULE_SRCS := system/see/authmgr/authmgr-be-impl/src/lib.rs
 
-MODULE_CRATE_NAME := hex
+MODULE_CRATE_NAME := authmgr_be_impl
 
-MODULE_RUSTFLAGS += \
-	--cfg 'feature="alloc"' \
-	--cfg 'feature="default"' \
-	--cfg 'feature="std"' \
-
-MODULE_LIBRARY_DEPS += \
-	packages/modules/Virtualization/libs/dice/open_dice \
+MODULE_LIBRARY_EXPORTED_DEPS += \
+	trusty/user/base/lib/authgraph-rust/boringssl \
 	trusty/user/base/lib/authgraph-rust/core \
-	trusty/user/base/lib/authgraph-rust/wire \
-	trusty/user/base/lib/hex-rust \
-	$(call FIND_CRATE,coset) \
+	trusty/user/base/lib/authmgr-be-rust \
+	$(call FIND_CRATE,log) \
 
 include make/library.mk
