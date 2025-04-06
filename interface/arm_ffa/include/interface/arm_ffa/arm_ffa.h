@@ -29,7 +29,7 @@
 #endif
 
 #define FFA_CURRENT_VERSION_MAJOR (1U)
-#define FFA_CURRENT_VERSION_MINOR (1U)
+#define FFA_CURRENT_VERSION_MINOR (2U)
 
 #define FFA_VERSION_TO_MAJOR(version) ((version) >> 16)
 #define FFA_VERSION_TO_MINOR(version) ((version) & (0xffff))
@@ -370,6 +370,24 @@ typedef uint32_t ffa_features3_t;
 #define FFA_FEATURES3_MEM_RETRIEVE_REQ_REFCOUNT_MASK 0xffU
 
 /**
+ * Flags passed to FFA_PARTITION_INFO_GET
+ *
+ * * @FFA_PARTITION_INFO_GET_FLAG_RETURN_COUNT_ONLY
+ *     Return only the count of partitions corresponding to the given UUID.
+ */
+typedef uint32_t ffa_partition_info_get_flag32_t;
+#define FFA_PARTITION_INFO_GET_FLAG_RETURN_COUNT_ONLY (1U << 0)
+
+struct ffa_part_info_desc {
+    uint16_t partition_id;
+    uint16_t exec_ctx_or_proxy_id;
+    uint32_t properties;
+    uint64_t uuid_lo;
+    uint64_t uuid_hi;
+};
+STATIC_ASSERT(sizeof(struct ffa_part_info_desc) == 24);
+
+/**
  * enum ffa_error - FF-A error code
  * @FFA_ERROR_NOT_SUPPORTED:
  *         Operation is not supported by the current implementation.
@@ -389,6 +407,8 @@ typedef uint32_t ffa_features3_t;
  *         Operation aborted. Reason for abort is implementation specific.
  * @FFA_ERROR_NO_DATA:
  *         Requested information not available.
+ * @FFA_ERROR_NOT_READY:
+ *         Callee is not ready to handle the request.
  *
  */
 enum ffa_error {
@@ -401,6 +421,7 @@ enum ffa_error {
     FFA_ERROR_RETRY = -7,
     FFA_ERROR_ABORTED = -8,
     FFA_ERROR_NO_DATA = -9,
+    FFA_ERROR_NOT_READY = -10,
 };
 
 /**
@@ -559,6 +580,23 @@ enum ffa_error {
 #define SMC_FC_FFA_RXTX_UNMAP SMC_FASTCALL_NR_SHARED_MEMORY(0x67)
 
 /**
+ * SMC_FC_FFA_PARTITION_INFO_GET - SMC opcode to get info about FF-A components
+ *
+ * Register arguments:
+ *
+ * w1:      Bytes[0..3] of UUID in little-endian.
+ * w2:      Bytes[4..7] of UUID in little-endian.
+ * w3:      Bytes[8..11] of UUID in little-endian.
+ * w4:      Bytes[12..15] of UUID in little-endian.
+ * w5:      bit[0]    : Information type flag. 1 for just the partition count
+ *                      with the UUID and 0 for the partition info descriptors.
+ *          bit[31:1] : SBZ
+ * w6-w7:   Reserved (SBZ).
+ *
+ */
+#define SMC_FC_FFA_PARTITION_INFO_GET SMC_FASTCALL_NR_SHARED_MEMORY(0x68)
+
+/**
  * SMC_FC_FFA_ID_GET - SMC opcode to get endpoint id of caller
  *
  * Return:
@@ -571,6 +609,20 @@ enum ffa_error {
  * SMC_FC_FFA_MSG_WAIT - SMC opcode to transition from running to waiting state
  */
 #define SMC_FC_FFA_MSG_WAIT SMC_FASTCALL_NR_SHARED_MEMORY(0x6B)
+
+/**
+ * SMC_FC_FFA_YIELD - SMC opcode to yield execution back to the component that
+ *                    scheduled it.
+ *
+ * Register arguments:
+ *
+ * * w1:     Endpoint ID in [31:16], vCPU in [15:0].
+ * * w2:     Lower 32-bits of timeout interval in nanoseconds after which vCPU
+ *           in w1 must run.
+ * * w3:     Upper 32-bits of timeout interval in nanoseconds after which vCPU
+ *           in w1 must run.
+ */
+#define SMC_FC_FFA_YIELD SMC_FASTCALL_NR_SHARED_MEMORY(0x6C)
 
 /**
  * SMC_FC_FFA_MSG_RUN - SMC opcode to allocate cycles to an endpoint
@@ -871,3 +923,95 @@ enum ffa_error {
  *           %FFA_ERROR_INVALID_PARAMETERS Invalid entry point specified
  */
 #define SMC_FC64_FFA_SECONDARY_EP_REGISTER SMC_FASTCALL64_NR_SHARED_MEMORY(0x87)
+
+/* Framework messages */
+/**
+ * FFA_FRAMEWORK_MSG_FLAG - Direct message flag for framework messages.
+ *
+ * Framework messages have &FFA_FRAMEWORK_MSG_FLAG set in w2.
+ */
+#define FFA_FRAMEWORK_MSG_FLAG (1U << 31)
+
+/**
+ * FFA_FRAMEWORK_MSG_MASK - Mask for the framework message type.
+ *
+ * Mask the value in w2 against &FFA_FRAMEWORK_MSG_MASK
+ * to get the framework message type.
+ */
+#define FFA_FRAMEWORK_MSG_MASK (0xffU)
+
+/**
+ * FFA_FRAMEWORK_MSG_VM_CREATED_REQ - VM creation request.
+ *
+ * Register arguments:
+ *
+ * * w0:     &SMC_FC_FFA_MSG_SEND_DIRECT_REQ
+ * * w1:     Hypervisor ID in bit[31:16], SP ID in [15:0]
+ * * w2:     Message Flags.
+ *           bit[31]   : 1 for framework message.
+ *           bit[30:8] : Reserved. Must be 0.
+ *           bit[7:0]  : &FFA_FRAMEWORK_MSG_VM_CREATED_REQ
+ * * w3/w4:  Handle to identify a memory region.
+ * * w5:     ID of VM in [15:0], remaining SBZ.
+ * * w6-7:   Should be zero.
+ */
+#define FFA_FRAMEWORK_MSG_VM_CREATED_REQ 4
+
+/**
+ * FFA_FRAMEWORK_MSG_VM_CREATED_RESP - VM creation response.
+ *
+ * Register arguments:
+ *
+ * * w0:     &SMC_FC_FFA_MSG_SEND_DIRECT_RESP
+ * * w1:     SP ID in bit[31:16], hypervisor ID in [15:0]
+ * * w2:     Message Flags.
+ *           bit[31]   : 1 for framework message.
+ *           bit[30:8] : Reserved. Must be 0.
+ *           bit[7:0]  : &FFA_FRAMEWORK_MSG_VM_CREATED_RESP
+ * * w3:     SP return status code:
+ *           %0 in case of success
+ *           %FFA_ERROR_INVALID_PARAMETERS
+ *           %FFA_ERROR_INTERRUPTED
+ *           %FFA_ERROR_DENIED
+ *           %FFA_ERROR_RETRY
+ * * w4-7:   Should be zero.
+ */
+#define FFA_FRAMEWORK_MSG_VM_CREATED_RESP 5
+
+/**
+ * FFA_FRAMEWORK_MSG_VM_DESTROYED_REQ - VM destruction request.
+ *
+ * Register arguments:
+ *
+ * * w0:     &SMC_FC_FFA_MSG_SEND_DIRECT_REQ
+ * * w1:     Hypervisor ID in bit[31:16], SP ID in [15:0]
+ * * w2:     Message Flags.
+ *           bit[31]   : 1 for framework message.
+ *           bit[30:8] : Reserved. Must be 0.
+ *           bit[7:0]  : &FFA_FRAMEWORK_MSG_VM_DESTROYED_REQ
+ * * w3/w4:  Handle to identify a memory region.
+ * * w5:     ID of VM in [15:0], remaining SBZ.
+ * * w6-7:   Should be zero.
+ */
+#define FFA_FRAMEWORK_MSG_VM_DESTROYED_REQ 6
+
+/**
+ * FFA_FRAMEWORK_MSG_VM_DESTROYED_RESP - VM destruction response.
+ *
+ * Register arguments:
+ *
+ * * w0:     &SMC_FC_FFA_MSG_SEND_DIRECT_RESP
+ * * w1:     SP ID in bit[31:16], hypervisor ID in [15:0]
+ * * w2:     Message Flags.
+ *           bit[31]   : 1 for framework message.
+ *           bit[30:8] : Reserved. Must be 0.
+ *           bit[7:0]  : &FFA_FRAMEWORK_MSG_VM_DESTROYED_RESP
+ * * w3:     SP return status code:
+ *           %0 in case of success
+ *           %FFA_ERROR_INVALID_PARAMETERS
+ *           %FFA_ERROR_INTERRUPTED
+ *           %FFA_ERROR_DENIED
+ *           %FFA_ERROR_RETRY
+ * * w4-7:   Should be zero.
+ */
+#define FFA_FRAMEWORK_MSG_VM_DESTROYED_RESP 7

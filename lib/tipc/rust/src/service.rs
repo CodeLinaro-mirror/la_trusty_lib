@@ -126,6 +126,31 @@ impl PortCfg {
     pub fn allowed_uuids(self, uuids: &'static [Uuid]) -> Self {
         Self { uuid_allow_list: Some(uuids), ..self }
     }
+
+    /// Get path
+    pub fn get_path(&self) -> &CString {
+        &self.path
+    }
+
+    /// Get message max size
+    pub fn get_msg_max_size(&self) -> u32 {
+        self.msg_max_size
+    }
+
+    /// Get message queue length
+    pub fn get_msg_queue_len(&self) -> u32 {
+        self.msg_queue_len
+    }
+
+    /// Get flags
+    pub fn get_flags(&self) -> u32 {
+        self.flags
+    }
+
+    /// Get allowed UUIDs
+    pub fn get_uuid_allow_list(&self) -> Option<&'static [Uuid]> {
+        self.uuid_allow_list
+    }
 }
 
 impl TryClone for PortCfg {
@@ -241,7 +266,7 @@ impl<D: Dispatcher> Channel<D> {
 pub struct Uuid(trusty_sys::uuid);
 
 impl Uuid {
-    const UUID_BYTE_LEN: usize = std::mem::size_of::<trusty_sys::uuid>();
+    pub const UUID_BYTE_LEN: usize = std::mem::size_of::<trusty_sys::uuid>();
     // UUID_STR_SIZE is a u32, conversion to usize is correct on our targeted architectures
     // Subtracting 1 from UUID_STR_SIZE because we don't need the null terminator on the RUST
     // implementation.
@@ -272,6 +297,10 @@ impl Uuid {
 
     pub unsafe fn as_ptr(&self) -> *const trusty_sys::uuid {
         &self.0
+    }
+
+    pub unsafe fn as_mut_ptr(&mut self) -> *mut trusty_sys::uuid {
+        &mut self.0
     }
 
     pub fn new_from_string(uuid_str: &str) -> Result<Self> {
@@ -362,6 +391,12 @@ impl fmt::Debug for Uuid {
             }
         }
         Ok(())
+    }
+}
+
+impl From<trusty_sys::uuid> for Uuid {
+    fn from(uuid: trusty_sys::uuid) -> Self {
+        Self(uuid)
     }
 }
 
