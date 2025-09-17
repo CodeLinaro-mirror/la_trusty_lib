@@ -20,6 +20,7 @@
 
 #include <assert.h>
 #include <interface/line-coverage/aggregator.h>
+#include <inttypes.h>
 #include <lib/coverage/common/cov_shm.h>
 #include <lib/coverage/common/ipc.h>
 #include <lib/line-coverage/shm.h>
@@ -212,18 +213,18 @@ static bool client_is_allowed(const struct tipc_port_acl* acl,
 static void handle_connect(struct tipc_port_ctx* port) {
     int rc;
     handle_t hchan;
-    struct uuid peer;
-    void* user_ctx = NULL;
-    struct tipc_chan_ctx* chan;
+    struct trusty_peer_id_uuid peer = {
+            .kind = TRUSTY_PEER_ID_KIND_UUID,
+    };
     struct tipc_srv* srv = port->srv;
 
     TLOGD("Incoming connection on %s\n", port->cfg->name);
 
     /* incoming connection: accept it */
-    rc = accept(port->handle, &peer);
+    rc = accept(port->handle, &peer.id);
     if (rc < 0) {
         TLOGE("failed (%d) to accept on port %s\n", rc, port->cfg->name);
-        return;
+        goto err_accept;
     }
     hchan = (handle_t)rc;
 
@@ -234,14 +235,42 @@ static void handle_connect(struct tipc_port_ctx* port) {
     }
 
     /* do access control */
-    if (!client_is_allowed(port->cfg->acl, &peer)) {
+    if (!client_is_allowed(port->cfg->acl, &peer.id)) {
         TLOGE("access denied on port %s\n", port->cfg->name);
         goto err_access;
     }
 
+    rc = tipc_add_connection(port, hchan, (struct trusty_peer_id*)&peer,
+                             sizeof(peer));
+    if (rc < 0) {
+        goto err_tipc_add_connection;
+    }
+    return;
+
+err_tipc_add_connection:
+err_access:
+err_too_many_chan:
+    close(hchan);
+err_accept:
+    return;
+}
+
+/*
+ * Add a new connection
+ */
+int tipc_add_connection(struct tipc_port_ctx* port,
+                        handle_t hchan,
+                        const struct trusty_peer_id* peer,
+                        size_t peer_len) {
+    int rc;
+    void* user_ctx = NULL;
+    struct tipc_chan_ctx* chan;
+    struct tipc_srv* srv = port->srv;
+
     chan = calloc(1, sizeof(*chan));
     if (!chan) {
         TLOGE("oom while handling port %s\n", port->cfg->name);
+        rc = ERR_NO_MEMORY;
         goto err_oom;
     }
 
@@ -260,9 +289,36 @@ static void handle_connect(struct tipc_port_ctx* port) {
 
     /* invoke on_connect handler if any */
     if (srv->ops->on_connect) {
-        rc = srv->ops->on_connect(port->cfg, chan->handle, &peer, &user_ctx);
+        if (peer->kind != TRUSTY_PEER_ID_KIND_UUID) {
+            TLOGE("unsupported peer kind %" PRIx64
+                  " passed to on_connect on port %s. "
+                  "Did you mean to implement on_connect_peer_id?\n",
+                  peer->kind, port->cfg->name);
+            goto err_unwrap_uuid_peer;
+        }
+        if (peer_len != sizeof(struct trusty_peer_id_uuid)) {
+            TLOGE("unexpected peer_len %zu (expected %zu) passed to on_connect "
+                  "for kind %" PRIx64
+                  " (port %s). Do kernel and userspace have mismatched "
+                  "versions?\n",
+                  peer_len, sizeof(struct trusty_peer_id_uuid), peer->kind,
+                  port->cfg->name);
+            goto err_unwrap_uuid_peer;
+        }
+
+        rc = srv->ops->on_connect(port->cfg, chan->handle,
+                                  (struct uuid*)&peer->data, &user_ctx);
         if (rc < 0) {
             TLOGE("on_connect failed (%d) on port %s\n", rc, port->cfg->name);
+            goto err_on_connect;
+        }
+    }
+    if (srv->ops->on_connect_peer_id) {
+        rc = srv->ops->on_connect_peer_id(port->cfg, chan->handle, peer,
+                                          peer_len, &user_ctx);
+        if (rc < 0) {
+            TLOGE("on_connect_peer_id failed (%d) on port %s\n", rc,
+                  port->cfg->name);
             goto err_on_connect;
         }
     }
@@ -280,15 +336,14 @@ static void handle_connect(struct tipc_port_ctx* port) {
     }
 
     TLOGD("got connection on %s\n", port->cfg->name);
-    return;
+    return NO_ERROR;
 
 err_on_connect:
+err_unwrap_uuid_peer:
 err_hset_add:
     free(chan);
 err_oom:
-err_too_many_chan:
-err_access:
-    close(hchan);
+    return rc;
 }
 
 /*
@@ -326,17 +381,24 @@ static bool is_valid_tipc_srv_ops(const struct tipc_srv_ops* ops) {
         return false;
     }
 
+    if (ops->on_connect && ops->on_connect_peer_id) {
+        TLOGE("Setting both on_connect and on_connect_peer_id is not "
+              "allowed\n");
+        return false;
+    }
+
     return true;
 }
 
 /*
  *  Add new TIPC service to handle set
  */
-int tipc_add_service(struct tipc_hset* hset,
-                     const struct tipc_port* ports,
-                     uint32_t num_ports,
-                     uint32_t max_chan_cnt,
-                     const struct tipc_srv_ops* ops) {
+int tipc_add_service_ports(struct tipc_hset* hset,
+                           const struct tipc_port* ports,
+                           uint32_t num_ports,
+                           uint32_t max_chan_cnt,
+                           const struct tipc_srv_ops* ops,
+                           struct tipc_port_ctx** ports_out) {
     int rc;
     uint32_t i;
     struct tipc_srv* srv;
@@ -411,6 +473,11 @@ int tipc_add_service(struct tipc_hset* hset,
         }
     }
     setup_mailbox(ports, num_ports);
+    if (ports_out) {
+        for (i = 0; i < num_ports; i++) {
+            ports_out[i] = &srv->ports[i];
+        }
+    }
     return 0;
 
 err_hset_add:
@@ -428,4 +495,8 @@ err_no_acl:
     free(srv);
 
     return rc;
+}
+
+struct tipc_hset* tipc_get_hset(struct tipc_port_ctx* port) {
+    return port->srv->hset;
 }
