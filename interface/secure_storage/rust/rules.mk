@@ -15,6 +15,9 @@
 
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
+MODULE_AIDL_STABLE := true
+MODULE_AIDL_VERSION := 1
+
 AIDL_DIR := \
 	hardware/interfaces/security/see/storage/aidl/aidl_api/android.hardware.security.see.storage/current
 
