@@ -34,20 +34,21 @@
 
 #include "tipc_priv.h"
 
-static void port_event_handler_proc(const struct uevent* ev, void* port_ctx);
+static void port_event_handler_proc(const struct uevent* ev,
+                                    void* tipc_port_ctx);
 static void chan_event_handler_proc(const struct uevent* ev, void* chan_ctx);
 
-struct port_ctx {
+struct tipc_port_ctx {
     struct tipc_event_handler event_handler;
     const struct tipc_port* cfg;
     struct tipc_srv* srv;
     handle_t handle;
 };
 
-struct chan_ctx {
+struct tipc_chan_ctx {
     struct list_node chan_list_node;
     struct tipc_event_handler event_handler;
-    struct port_ctx* port;
+    struct tipc_port_ctx* port;
     handle_t handle;
     void* user_ctx;
 };
@@ -59,7 +60,7 @@ struct tipc_srv {
     uint32_t chan_cnt;
     uint32_t max_chan_cnt;
     uint32_t port_cnt;
-    struct port_ctx ports[0];
+    struct tipc_port_ctx ports[0];
 };
 
 /*
@@ -67,7 +68,7 @@ struct tipc_srv {
  */
 static void set_ports_event_mask(struct tipc_srv* srv, uint32_t mask) {
     uint32_t i;
-    struct port_ctx* p;
+    struct tipc_port_ctx* p;
 
     /* unmask ports here */
     for (i = 0, p = srv->ports; i < srv->port_cnt; i++, p++) {
@@ -83,7 +84,7 @@ static bool server_at_max_chan_cnt(struct tipc_srv* srv) {
 /*
  * Helper to close channel
  */
-static void tipc_chan_close(struct chan_ctx* chan) {
+static void tipc_chan_close(struct tipc_chan_ctx* chan) {
     int rc;
     struct tipc_srv* srv = chan->port->srv;
     void* user_ctx = chan->user_ctx;
@@ -130,7 +131,7 @@ static void tipc_chan_close(struct chan_ctx* chan) {
  */
 static void chan_event_handler_proc(const struct uevent* ev, void* chan_ctx) {
     int rc;
-    struct chan_ctx* chan = chan_ctx;
+    struct tipc_chan_ctx* chan = chan_ctx;
     struct tipc_srv* srv = chan->port->srv;
 
     assert(ev->handle == chan->handle);
@@ -207,12 +208,12 @@ static bool client_is_allowed(const struct tipc_port_acl* acl,
 /*
  *  Handle incoming connection
  */
-static void handle_connect(struct port_ctx* port) {
+static void handle_connect(struct tipc_port_ctx* port) {
     int rc;
     handle_t hchan;
     struct uuid peer;
     void* user_ctx = NULL;
-    struct chan_ctx* chan;
+    struct tipc_chan_ctx* chan;
     struct tipc_srv* srv = port->srv;
 
     TLOGD("Incoming connection on %s\n", port->cfg->name);
@@ -296,7 +297,7 @@ static void port_event_handler_proc(const struct uevent* ev, void* ctx) {
     tipc_handle_port_errors(ev);
 
     if (ev->event & IPC_HANDLE_POLL_READY) {
-        struct port_ctx* port = ctx;
+        struct tipc_port_ctx* port = ctx;
         assert(port->handle == ev->handle);
         handle_connect(port);
     }
@@ -330,15 +331,16 @@ static bool is_valid_tipc_srv_ops(const struct tipc_srv_ops* ops) {
 /*
  *  Add new TIPC service to handle set
  */
-int tipc_add_service(struct tipc_hset* hset,
-                     const struct tipc_port* ports,
-                     uint32_t num_ports,
-                     uint32_t max_chan_cnt,
-                     const struct tipc_srv_ops* ops) {
+int tipc_add_service_ports(struct tipc_hset* hset,
+                           const struct tipc_port* ports,
+                           uint32_t num_ports,
+                           uint32_t max_chan_cnt,
+                           const struct tipc_srv_ops* ops,
+                           struct tipc_port_ctx** ports_out) {
     int rc;
     uint32_t i;
     struct tipc_srv* srv;
-    struct port_ctx* port;
+    struct tipc_port_ctx* port;
 
     if (IS_ERR(hset)) {
         TLOGE("invalid handle set (%d)\n", PTR_ERR(hset));
@@ -356,8 +358,8 @@ int tipc_add_service(struct tipc_hset* hset,
     }
 
     /* allocate new service */
-    srv = calloc(1,
-                 sizeof(struct tipc_srv) + sizeof(struct port_ctx) * num_ports);
+    srv = calloc(1, sizeof(struct tipc_srv) +
+                            sizeof(struct tipc_port_ctx) * num_ports);
     if (!srv) {
         return ERR_NO_MEMORY;
     }
@@ -409,6 +411,11 @@ int tipc_add_service(struct tipc_hset* hset,
         }
     }
     setup_mailbox(ports, num_ports);
+    if (ports_out) {
+        for (i = 0; i < num_ports; i++) {
+            ports_out[i] = &srv->ports[i];
+        }
+    }
     return 0;
 
 err_hset_add:
@@ -426,4 +433,41 @@ err_no_acl:
     free(srv);
 
     return rc;
+}
+
+int tipc_remove_service(struct tipc_port_ctx* port) {
+    uint32_t i;
+    int rc;
+
+    if (!port) {
+        return ERR_INVALID_ARGS;
+    }
+
+    struct tipc_srv* srv = port->srv;
+    if (!srv) {
+        return ERR_INVALID_ARGS;
+    }
+
+    /* Remove all ports of the service from the handle set and close them */
+    for (i = 0; i < srv->port_cnt; i++) {
+        struct tipc_port_ctx* p = &srv->ports[i];
+        if (p->handle != INVALID_IPC_HANDLE) {
+            rc = tipc_hset_remove_entry(srv->hset, p->handle);
+            if (rc != NO_ERROR) {
+                TLOGE("failed (%d) to remove port from hset\n", rc);
+            }
+            close(p->handle);
+            p->handle = INVALID_IPC_HANDLE;
+        }
+    }
+
+    /* Close all active channels of the service */
+    struct tipc_chan_ctx* chan;
+    while ((chan = list_peek_head_type(&srv->chan_list, struct tipc_chan_ctx,
+                                       chan_list_node)) != NULL) {
+        tipc_chan_close(chan);
+    }
+
+    free(srv);
+    return 0;
 }
